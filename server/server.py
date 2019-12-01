@@ -5,6 +5,8 @@ import json
 import threading
 import time
 
+write_lock = threading.Lock()
+
 
 def log(message, show=True):
     if show:
@@ -12,7 +14,7 @@ def log(message, show=True):
 
 
 class Server:
-    userlist = []
+    userlist = {}
 
     def __init__(self):
         self.connection_control = RabbitMQ()
@@ -37,54 +39,67 @@ class Server:
 
     def passMessage(self, ch, method, properties, body):
         response = json.loads(body)
-        ch.basic_ack(delivery_tag=method.delivery_tag)
-        toSendConnection = ""
-        for el in self.userlist:
-            if el["username"] == response["to"]:
-                toSendConnection = el["connection"]
+        date = response["date"]
+        userID = response["userID"]
+        message = response["message"]
 
-        if toSendConnection == "":
-            log("User "+response["to"]+" not found")
-        else:
-            toSendConnection.sendMessage(
-                "CHAN_"+response["to"], response["to"], response["message"], response["userID"])
+        toWrite = f"[{date}] {userID}: {message} \n"
+
+        write_lock.acquire()
+
+        logs = open("log.txt", "a")
+        logs.write(toWrite)
+        logs.close()
+        write_lock.release()
+        self.userlist[response["userID"]]["messages"].append(toWrite)
+        self.userlist[response["userID"]]["channel"].sendMessage(
+            "CHAN_"+response["to"]+"_receive", response["to"], response["message"], response["userID"])
 
     def processControlMessage(self, ch, method, properties, body):
         response = json.loads(body)
         log(response)
         if response["message"] == "USERLIST":
-            toSend = []
-            for el in self.userlist:
-                toSend.append(el["username"])
+            #    ch.basic_ack(delivery_tag=method.delivery_tag)
+            toSend = list(self.userlist.keys())
             self.connection_control.sendMessage(
-                "control", response["userID"], toSend, "SERVER", {
+                "control_"+response["userID"], response["userID"], toSend, "SERVER", {
                     "type": "USERLIST"
                 })
+        if response["message"] == "SENT_MESSAGES":
+            toSend = self.userlist[response["userID"]]["messages"]
+            self.connection_control.sendMessage(
+                "control_"+response["userID"], response["userID"], toSend, "SERVER", {
+                    "type": "SENT_MESSAGES"
+                })
 
-    def join_communication_channel(self, currentConnection, channel):
-        currentConnection.join_channel(channel, self.passMessage)
+    def logJoin(self):
+        log("Joined Channel")
+
+    def join_communication_channel(self, userID, channel):
+        self.userlist[userID]["channel"] = RabbitMQ()
+        self.userlist[userID]["channel"].join_channel(
+            channel, self.passMessage, self.logJoin)
 
     def processAuthMessage(self, ch, method, properties, body):
         log("Received LOGIN message")
         response = json.loads(body)
         print(response)
         if response["to"] == "" and response["userID"] != "":
-            ch.basic_ack(delivery_tag=method.delivery_tag)
-
-            current_connection = RabbitMQ()
-            self.userlist.append({
-                "username": response["userID"],
-                "connection": current_connection}
-            )
+            self.userlist[response["userID"]] = {
+                "channel": "",
+                "messages": []
+            }
             toSend = {
                 "status": "CONNECTION_ACCEPTED",
                 "channel": "CHAN_"+response["userID"]
             }
             self.connection_auth.sendMessage(
-                "auth", response["userID"], "", "SERVER", toSend)
+                "auth_"+response["userID"], response["userID"], "", "SERVER", toSend)
             t = threading.Thread(
-                target=self.join_communication_channel, args=(current_connection, toSend["channel"]))
+                target=self.join_communication_channel, args=(response["userID"], toSend["channel"]))
             t.start()
+        # else:
+        #    ch.basic_nack(delivery_tag=method.delivery_tag)
 
 
 server = Server()
