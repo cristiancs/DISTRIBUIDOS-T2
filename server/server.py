@@ -15,46 +15,76 @@ class Server:
     userlist = []
 
     def __init__(self):
-        self.connection = RabbitMQ(self.onConnect)
-
-    def onConnect(self):
-        log("Connected to RabbitMQ")
+        self.connection_control = RabbitMQ()
+        self.connection_auth = RabbitMQ()
         self.start_channels()
 
-    def empty(self):
-        return
+    def join_auth(self):
+        self.connection_auth.join_channel(
+            "auth", self.processAuthMessage)
+
+    def join_control(self):
+        self.connection_control.join_channel(
+            "control", self.processControlMessage)
 
     def start_channels(self):
         log("Starting Channels")
-        self.connection.join_channel(
-            "auth", self.processAuthMessage, self.empty)
-        self.connection.join_channel(
-            "control", self.processControlMessage, self.empty)
+        t = threading.Thread(target=self.join_auth, args=())
+        t2 = threading.Thread(target=self.join_control, args=())
+
+        t.start()
+        t2.start()
 
     def passMessage(self, ch, method, properties, body):
         response = json.loads(body)
-        self.connection.sendMessage(
-            "CHAN_"+response.to, response.to, response.message, response.userID)
+
+        toSendConnection = ""
+        for el in self.userlist:
+            if el["username"] == response["to"]:
+                toSendConnection = el.connection
+
+        if toSendConnection == "":
+            log("User "+response["to"]+" not found")
+        else:
+            toSendConnection.sendMessage(
+                "CHAN_"+response["to"], response["to"], response["message"], response["userID"])
 
     def processControlMessage(self, ch, method, properties, body):
         response = json.loads(body)
-        if response.message == "USERLIST":
-            self.connection.sendMessage(
-                "control", response.userID, self.userlist, "SERVER")
+        log(response)
+        if response["message"] == "USERLIST":
+            toSend = []
+            for el in self.userlist:
+                toSend.append(el["username"])
+            self.connection_control.sendMessage(
+                "control", response["userID"], toSend, "SERVER", {
+                    "type": "USERLIST"
+                })
+
+    def join_communication_channel(self, currentConnection, channel):
+        currentConnection.join_channel(channel, self.passMessage)
 
     def processAuthMessage(self, ch, method, properties, body):
         log("Received LOGIN message")
         response = json.loads(body)
-        if response.to == "" and response.userID != "":
+        print(response)
+        if response["to"] == "" and response["userID"] != "":
             ch.basic_ack(delivery_tag=method.delivery_tag)
-            userlist.append(response.userID)
+
+            current_connection = RabbitMQ()
+            self.userlist.append({
+                "username": response["userID"],
+                "connection": current_connection}
+            )
             toSend = {
-                status: "CONNECTION_ACCEPTED",
-                channel: "CHAN_"+response.userID
+                "status": "CONNECTION_ACCEPTED",
+                "channel": "CHAN_"+response["userID"]
             }
-            self.connection.sendMessage(
-                "auth", response.userID, "", "SERVER", toSend)
-            self.connection.join_channel(toSend.channel, self.passMessage)
+            self.connection_auth.sendMessage(
+                "auth", response["userID"], "", "SERVER", toSend)
+            t = threading.Thread(
+                target=self.join_communication_channel, args=(current_connection, toSend["channel"]))
+            t.start()
 
 
 server = Server()

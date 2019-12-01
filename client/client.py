@@ -17,74 +17,93 @@ class Client:
     messagingChannel = ""
 
     def __init__(self):
-        time.sleep(5)
-        self.connection = RabbitMQ(self.onConnect)
-
-    def onConnect(self):
+        self.connection_auth = RabbitMQ()
         log("Connected to RabbitMQ")
+        time.sleep(2)  # Para darle tiempo al servidor a inicializarse
         self.auth()
 
     def processMessage(self, ch, method, properties, body):
         response = json.loads(body)
-        print(response.date+" "+response.message)
+        if response["to"] == self.clientId:
+            print("["+response["date"]+"] "+response["message"])
 
     def sendMessage(self, user, message):
-        self.connection.sendMessage("", "", "USERLIST", self.clientId)
+        self.connection_messages.sendMessage(
+            self.messagingChannel, user, message, self.clientId)
 
     def processControlMessages(self, ch, method, properties, body):
         response = json.loads(body)
-        if response.to == self.clientId:
+        if response["to"] == self.clientId:
             ch.basic_ack(delivery_tag=method.delivery_tag)
-            if response.type == "USERLIST":
+            if response["type"] == "USERLIST":
                 toPrint = ""
-                for x in response.users:
-                    toPrint += x+"\n"
+                i = 1
+                for x in response["message"]:
+                    toPrint += str(i)+": "+x+"\n"
+                    i += 1
                 print(toPrint)
+                ch.stop_consuming()
+
+    def requestList(self):
+        self.connection_control.sendMessage(
+            "control", "", "USERLIST", self.clientId)
 
     def getClients(self):
-        self.connection.sendMessage("")
+        log("Getting Clientes")
+        self.connection_control = RabbitMQ()
+        self.connection_control.join_channel(
+            "control", self.processControlMessages, self.requestList)
 
     def waitForMessages(self):
         process_messages = True
         print("Conexión Establecida, para enviar un mensaje escriba: /msg user mensaje")
         while process_messages:
             text = input("")
+            log(text)
             params = text.split(" ")
             command = params.pop(0).replace("/", "")
+
+            log(command, params)
             if command == "msg":
                 user = params.pop(0)
                 message = " ".join(params)
                 self.sendMessage(user, message)
-            if command == "quit":
+            elif command == "quit":
                 process_messages = False
                 log("TODO: Disconnected")
-            if command == "list":
-                this.getClients()
+            elif command == "list":
+                self.getClients()
+            else:
+                print("Comando no reconocido")
 
     def processLoginMessage(self, ch, method, properties, body):
         log("Logging Response Received (General)")
         response = json.loads(body)
-        if response.to == self.clientId:
+        print(response, self.clientId)
+        if response["to"] == self.clientId:
             log("Loggin is for us")
             ch.basic_ack(delivery_tag=method.delivery_tag)
-            if response.status == "CONNECTION_ACCEPTED":
+            if response["status"] == "CONNECTION_ACCEPTED":
                 self.status = "logged_in"
                 ch.stop_consuming()
-                self.messagingChannel = response.channel
-                self.connection.join_channel(
-                    response.channel, self.processMessage)
-                self.connection.join_channel(
-                    "control", self.processControlMessages)
-                threading.Thread(target=self.waitForMessages, args=(1,))
+                self.connection_auth.close()
+                self.messagingChannel = response["channel"]
+
+                t = threading.Thread(target=self.waitForMessages, args=())
+                t.start()
+                self.connection_messages = RabbitMQ()
+                self.connection_messages.join_channel(
+                    response["channel"], self.processMessage)
 
     def handleAuthOpen(self):
         log("Requesting Login")
-        self.connection.sendMessage("auth", "", "LOGIN_REQUEST", self.clientId)
+        self.connection_auth.sendMessage(
+            "auth", "", "LOGIN_REQUEST", self.clientId)
 
     def auth(self):
         log("Starting Auth")
         self.status = "authenticating"
-        self.connection.join_channel(
+        self.connection_auth.join_channel(
             "auth", self.processLoginMessage, self.handleAuthOpen)
 
 
