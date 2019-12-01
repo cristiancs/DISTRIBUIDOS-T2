@@ -37,11 +37,11 @@ class Server:
 
     def passMessage(self, ch, method, properties, body):
         response = json.loads(body)
-
+        ch.basic_ack(delivery_tag=method.delivery_tag)
         toSendConnection = ""
         for el in self.userlist:
             if el["username"] == response["to"]:
-                toSendConnection = el.connection
+                toSendConnection = el["connection"]
 
         if toSendConnection == "":
             log("User "+response["to"]+" not found")

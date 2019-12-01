@@ -52,6 +52,6 @@ class RabbitMQ:
             "userID": userID,
             **raw
         }
-        log(f"Sending {toSend}")
+        log(f"Sending {toSend} to {toChannel}")
         self.channel.basic_publish(
             exchange='', routing_key=toChannel, body=json.dumps(toSend))
