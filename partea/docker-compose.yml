@@ -1,0 +1,18 @@
+version: "3"
+services:
+
+  server:
+    build: ./server
+    volumes:
+      - ./server:/app/
+    ports:
+      - "5000:5000"
+
+  client:
+    build: ./client
+    volumes:
+      - ./client:/app/
+    links:
+      - server
+    depends_on:
+      - server
