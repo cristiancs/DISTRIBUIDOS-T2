@@ -9,4 +9,5 @@ RUN apk add --update alpine-sdk make gcc python3-dev python-dev libxslt-dev libx
 
 RUN pip install -r requirements.txt
 
+
 CMD        ["python", "./client.py"]

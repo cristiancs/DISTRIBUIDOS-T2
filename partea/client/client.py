@@ -1,133 +1,52 @@
-from gRPC import gRPC
-import uuid
-import json
 import threading
-import time
+from Tkinter import *
+import grpc
+import chat_pb2 as chat
+import chat_pb2_grpc as rpc
 
-
-def log(message, show=True):
-    if show:
-        print(message)
-
+address = 'localhost'
+port = 11912
 
 class Client:
-    clientId = str(uuid.uuid4())
-    status = "disconnected"
-    control_enabled = False
-    messagingChannel = ""
 
-    def __init__(self):
-        self.connection_auth = gRPC()
-        log("Connected to gRPC")
-        time.sleep(2)  # Para darle tiempo al servidor a inicializarse
-        self.auth()
+    def __init__(self, u, window):
+        self.window = window
+        self.usuario = u
+        channel = grpc.insecure_channel(address + ':' + str(port))
+        self.connection = rpc.ChatServerStub(channel)
+        threading.Thread(target=self.__listen_for_messages).start()
+        self.initialize()
+        self.window.mainloop()
 
-    def processMessage(self, ch, method, properties, body):
-        response = json.loads(body)
-        date = response["date"]
-        userID = response["userID"]
-        message = response["message"]
+    def __listen_for_messages(self):
+        for note in self.connection.ChatStream(chat.Empty()):
+            print("R[{}] {}".format(note.name, note.message))
+            self.chat_list.insert(END, "[{}] {}\n".format(note.name, note.message))
 
-        log("Mensaje recibido")
-        if response["to"] == self.clientId:
-            log("Mensaje es para nosotros")
-            print(f"[{date}] {userID}: {message}")
+    def send_message(self, event):
+        message = self.envio_mensaje.get()
+        if message is not '':
+            n = chat.Note()
+            n.name = self.usuario
+            n.message = message
+            print("S[{}] {}".format(n.name, n.message))
+            self.connection.SendNote(n)
 
-    def processControlMessages(self, ch, method, properties, body):
-        response = json.loads(body)
-        if response["to"] == self.clientId:
-            if response["type"] == "USERLIST":
-                print("Listado de Usuarios")
-                toPrint = ""
-                i = 1
-                for x in response["message"]:
-                    toPrint += str(i)+": "+x+"\n"
-                    i += 1
-                print(toPrint)
-            if response["type"] == "SENT_MESSAGES":
-                print("Mensajes enviados por ti")
-                for x in response["message"]:
-                    print(x)
+    def initialize(self):
+        self.chat_list = Text()
+        self.chat_list.pack(side=TOP)
+        self.lbl_usuario = Label(self.window, text=self.usuario)
+        self.lbl_usuario.pack(side=LEFT)
+        self.envio_mensaje = Entry(self.window, bd=5)
+        self.envio_mensaje.bind('<Return>', self.send_message)
+        self.envio_mensaje.focus()
+        self.envio_mensaje.pack(side=BOTTOM)
 
-    def requestList(self):
-        # La pide esta conexión por el tema de los threads
-        self.connection_messages.sendMessage(
-            "control", "", "USERLIST", self.clientId)
-
-    def requestMessages(self):
-        # La pide esta conexión por el tema de los threads
-        self.connection_messages.sendMessage(
-            "control", "", "SENT_MESSAGES", self.clientId)
-
-    def startControlThread(self):
-        self.connection_control = gRPC()
-        self.connection_control.join_channel(
-            "control_"+self.clientId, self.processControlMessages, self.enableControl)
-
-    def enableControl(self):
-        log("Joined control channel")
-        self.control_enabled = True
-
-    def waitForMessages(self):
-        process_messages = True
-        t2 = threading.Thread(target=self.startControlThread, args=())
-        t2.start()
-        while process_messages:
-            try:
-                text = input("")
-            except EOFError:
-                process_messages = False
-                text = "ES_DOCKER"
-
-            params = text.split(" ")
-            command = params.pop(0).replace("/", "")
-
-            if command == "msg":
-                user = params.pop(0)
-                message = " ".join(params)
-                self.connection_messages.sendMessage(
-                    self.messagingChannel, user, message, self.clientId)
-            elif command == "quit":
-                process_messages = False
-                log("TODO: Disconnected")
-            elif command == "list":
-                self.requestList()
-            elif command == "mymessages":
-                self.requestMessages()
-            else:
-                print("Comando no reconocido")
-
-    def processLoginMessage(self, ch, method, properties, body):
-        log("Logging Response Received (General)")
-        response = json.loads(body)
-        log(response)
-        if response["to"] == self.clientId:
-            log("Loggin is for us")
-            if response["status"] == "CONNECTION_ACCEPTED":
-                print(f"Conexión Establecida, tu usuario es: {self.clientId}")
-                print(
-                    "Comandos disponibles:\n /msg user mensaje [envia mensaje a user] \n /list [Devuelve la lista de todos los usuarios]")
-                print(" /mymessages [Listado de canales]")
-                self.status = "logged_in"
-                ch.stop_consuming()
-                self.connection_auth.close()
-                self.messagingChannel = response["channel"]
-
-                self.connection_messages = gRPC()
-
-                self.connection_messages.join_channel(
-                    response["channel"]+"_receive", self.processMessage, self.waitForMessages)
-
-    def handleAuthOpen(self):
-        log("Requesting Login")
-        self.connection_auth.sendMessage(
-            "auth", "", "LOGIN_REQUEST", self.clientId)
-
-    def auth(self):
-        log("Starting Auth")
-        self.status = "authenticating"
-        self.connection_auth.join_channel(
-            "auth_"+self.clientId, self.processLoginMessage, self.handleAuthOpen)
-
-
-client = Client()
+root = Tk()
+frame = Frame(root, width=300, height=300)
+frame.pack()
+print("Coloque su nombre de usuario:")
+user = raw_input ()
+root.withdraw()
+root.deiconify()
+Client(user, frame)
