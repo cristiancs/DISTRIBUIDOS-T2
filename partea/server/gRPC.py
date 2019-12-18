@@ -24,7 +24,7 @@ class gRPC:
             try:
                 server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
                 pingpong_pb2_grpc.add_PingPongServiceServicer_to_server(Listener(), server)
-                server.add_insecure_port("[::]:5000")
+                server.add_insecure_port('127.0.0.1')
                 server.start()
                 self.status = "connected"
                 log("[gRPC] Connected")
@@ -34,15 +34,8 @@ class gRPC:
 
     def join_channel(self, tojoin, handle_message_callback, handle_on_channel_open=""):
         log(f"Joining channel {tojoin}")
-        self.channel = self.connection.channel()  # start a channel
-        self.channel.queue_declare(
-            queue=tojoin, durable=True)  # Declare a queue
-        self.channel.basic_consume(tojoin,
-                                   handle_message_callback,
-                                   auto_ack=True)
         if(handle_on_channel_open != ""):
             handle_on_channel_open()
-        self.channel.start_consuming()
 
     def close(self):
         self.connection.close()
@@ -59,7 +52,3 @@ class gRPC:
             **raw
         }
         log(f"Sending {toSend} to {toChannel}")
-        channel = self.connection.channel()
-        channel.queue_declare(queue=toSend["uuid"])
-        channel.basic_publish(
-            exchange='', routing_key=toChannel, body=json.dumps(toSend))
