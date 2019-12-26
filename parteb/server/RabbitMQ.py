@@ -7,7 +7,7 @@ import threading
 from functools import partial
 
 
-def log(message, show=True):
+def log(message, show=False):
     if show:
         print(message)
 

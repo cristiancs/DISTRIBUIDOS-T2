@@ -6,7 +6,8 @@ import threading
 import time
 from random import randint, choice
 
-def log(message, show=True):
+
+def log(message, show=False):
     if show:
         print(message)
 
@@ -55,12 +56,12 @@ class Client:
 
     def requestList(self):
         # La pide esta conexión por el tema de los threads
-        self.connection_messages.sendMessage(
+        self.input_connection.sendMessage(
             "control", "", "USERLIST", self.clientId)
 
     def requestMessages(self):
         # La pide esta conexión por el tema de los threads
-        self.connection_messages.sendMessage(
+        self.input_connection.sendMessage(
             "control", "", "SENT_MESSAGES", self.clientId)
 
     def startControlThread(self):
@@ -72,10 +73,9 @@ class Client:
         log("Joined control channel")
         self.control_enabled = True
 
-    def waitForMessages(self):
+    def processInput(self):
         process_messages = True
-        t2 = threading.Thread(target=self.startControlThread, args=())
-        t2.start()
+        self.input_connection = RabbitMQ()
         while process_messages:
             try:
                 text = input("")
@@ -86,7 +86,7 @@ class Client:
                 log("Seleccionando mensaje")
                 if(self.userPicked != ""):
                     text = choice(
-                        ["/list", "/mymessages", "/msg "+self.userPicked+" prueba de mensajes"])
+                        ["/list", "/msg "+self.userPicked+" prueba de mensajes"])
                 else:
                     text = "/list"
                 log("Enviando: "+text)
@@ -97,7 +97,7 @@ class Client:
             if command == "msg":
                 user = params.pop(0)
                 message = " ".join(params)
-                self.connection_messages.sendMessage(
+                self.input_connection.sendMessage(
                     self.messagingChannel, user, message, self.clientId)
             elif command == "quit":
                 process_messages = False
@@ -108,6 +108,13 @@ class Client:
                 self.requestMessages()
             else:
                 print("Comando no reconocido")
+
+    def waitForMessages(self):
+
+        t1 = threading.Thread(target=self.processInput, args=())
+        t1.start()
+        t2 = threading.Thread(target=self.startControlThread, args=())
+        t2.start()
 
     def processLoginMessage(self, ch, method, properties, body):
         log("Logging Response Received (General)")

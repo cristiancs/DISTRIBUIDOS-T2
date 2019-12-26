@@ -8,7 +8,7 @@ import time
 write_lock = threading.Lock()
 
 
-def log(message, show=True):
+def log(message, show=False):
     if show:
         print(message)
 
@@ -98,8 +98,6 @@ class Server:
             t = threading.Thread(
                 target=self.join_communication_channel, args=(response["userID"], toSend["channel"]))
             t.start()
-        # else:
-        #    ch.basic_nack(delivery_tag=method.delivery_tag)
 
 
 server = Server()
