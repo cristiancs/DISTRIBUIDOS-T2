@@ -5,6 +5,7 @@ from datetime import datetime
 import json
 import threading
 from functools import partial
+import sys
 
 
 def log(message, show=False):
@@ -20,8 +21,10 @@ class RabbitMQ:
     def __init__(self):
         while self.status != "connected":
             try:
+                ip_server = sys.argv[1] if len(
+                    sys.argv) > 1 else 'rabbitmq_1'
                 self.connection = pika.BlockingConnection(
-                    pika.ConnectionParameters('rabbitmq_1'))  # rabbitmq_1 127.0.0.1
+                    pika.ConnectionParameters(ip_server))  # rabbitmq_1 127.0.0.1
                 self.status = "connected"
                 log("[RABBITMQ] Connected")
             except Exception as e:
