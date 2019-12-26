@@ -4,12 +4,12 @@ package grpc;
 
 message Empty {}
 
-message Note {
-    string name = 1;
-    string message = 2;
+message Mensaje {
+    string message = 1;
 }
 
 service ChatServer {
-    rpc ChatStream (Empty) returns (stream Note);
-    rpc SendNote (Note) returns (Empty);
+    rpc passMessage (Mensaje) returns (Empty);
+    rpc ControlMessage (Mensaje) returns (Mensaje);
+    rpc AuthMessage(Mensaje) returns(Mensaje);
 }

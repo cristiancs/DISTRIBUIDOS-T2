@@ -4,7 +4,7 @@ import uuid
 import json
 import threading
 import time
-
+from random import randint, choice
 
 def log(message, show=True):
     if show:
@@ -16,6 +16,7 @@ class Client:
     status = "disconnected"
     control_enabled = False
     messagingChannel = ""
+    userPicked = ""
 
     def __init__(self):
         self.connection_auth = RabbitMQ()
@@ -44,6 +45,8 @@ class Client:
                 for x in response["message"]:
                     toPrint += str(i)+": "+x+"\n"
                     i += 1
+                # Para simular en docker
+                self.userPicked = choice(response["message"])
                 print(toPrint)
             if response["type"] == "SENT_MESSAGES":
                 print("Mensajes enviados por ti")
@@ -77,8 +80,16 @@ class Client:
             try:
                 text = input("")
             except EOFError:
-                process_messages = False
-                text = "ES_DOCKER"
+                seg = randint(0, 10000)
+                log("Es docker, enviando mensaje random en "+str(seg/1000.0))
+                time.sleep(seg/1000.0)
+                log("Seleccionando mensaje")
+                if(self.userPicked != ""):
+                    text = choice(
+                        ["/list", "/mymessages", "/msg "+self.userPicked+" prueba de mensajes"])
+                else:
+                    text = "/list"
+                log("Enviando: "+text)
 
             params = text.split(" ")
             command = params.pop(0).replace("/", "")

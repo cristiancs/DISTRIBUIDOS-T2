@@ -1,4 +1,5 @@
 FROM       python:3.7.4-alpine3.9
+
 WORKDIR    /app
 ENV PYTHONUNBUFFERED 1
 COPY requirements.txt ./
@@ -7,5 +8,6 @@ RUN apk add --update alpine-sdk make gcc python3-dev python-dev libxslt-dev libx
     && rm -rf /var/cache/apk/*
 
 RUN pip install -r requirements.txt
+
 
 CMD        ["python", "./server.py"]

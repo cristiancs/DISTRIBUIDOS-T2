@@ -21,7 +21,7 @@ class RabbitMQ:
         while self.status != "connected":
             try:
                 self.connection = pika.BlockingConnection(
-                    pika.ConnectionParameters('127.0.0.1'))
+                    pika.ConnectionParameters('127.0.0.1'))  # rabbitmq_1 127.0.0.1
                 self.status = "connected"
                 log("[RABBITMQ] Connected")
             except Exception as e:
